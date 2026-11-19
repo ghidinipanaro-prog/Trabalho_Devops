@@ -1,0 +1,17 @@
+namespace: hml
+resources:
+  - ../../base
+images:
+  - name: ghcr.io/ghidinipanaro-prog/devoops
+    newTag: latest
+patches:
+  - target:
+      kind: Deployment
+      name: devoops
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 1
+      - op: replace
+        path: /spec/template/spec/containers/0/env/0/value
+        value: "hml"

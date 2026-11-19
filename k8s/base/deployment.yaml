@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: devoops
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: devoops
+  template:
+    metadata:
+      labels:
+        app: devoops
+    spec:
+      containers:
+        - name: devoops
+          image: ghcr.io/ghidinipanaro-prog/devoops:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+          env:
+            - name: APP_ENV
+              value: "base"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 3
+            periodSeconds: 5
