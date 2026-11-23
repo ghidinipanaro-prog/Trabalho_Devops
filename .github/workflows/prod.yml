@@ -1,0 +1,21 @@
+name: Pipeline PROD
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    environment: prod
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy no namespace prod
+        shell: powershell
+        run: |
+          $f = "k8s/overlays/prod/kustomization.yaml"
+          (Get-Content $f) -replace 'newTag:.*', 'newTag: pre-${{ github.sha }}' | Set-Content $f
+          kubectl apply -k k8s/overlays/prod
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          kubectl rollout status deployment/devoops -n prod --timeout=180s
+          if ($LASTEXITCODE -ne 0) { exit 1 }
