@@ -1,0 +1,53 @@
+name: Pipeline HML
+
+on:
+  push:
+    branches: [release]
+
+env:
+  IMAGE: ghcr.io/ghidinipanaro-prog/devoops
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r app/requirements.txt pytest
+      - run: pytest tests/
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: ./app
+          push: true
+          tags: ${{ env.IMAGE }}:hml-${{ github.sha }}
+
+  deploy:
+    needs: build
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy no namespace hml
+        shell: powershell
+        run: |
+          $f = "k8s/overlays/hml/kustomization.yaml"
+          (Get-Content $f) -replace 'newTag:.*', 'newTag: hml-${{ github.sha }}' | Set-Content $f
+          kubectl apply -k k8s/overlays/hml
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          kubectl rollout status deployment/devoops -n hml --timeout=120s
+          if ($LASTEXITCODE -ne 0) { exit 1 }
