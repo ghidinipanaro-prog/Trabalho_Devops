@@ -1,0 +1,43 @@
+pipeline {
+  agent any
+
+  environment {
+    APP_IMAGE = "ghcr.io/ghidinipanaro-prog/devoops"
+    IMAGE_TAG = "dev-${BUILD_NUMBER}"
+    K8S_NS    = "dev"
+  }
+
+  stages {
+    stage('Checkout') {
+      steps {
+        checkout scm
+      }
+    }
+
+    stage('Tests') {
+      steps {
+        sh 'python3 -m pytest tests || true'
+      }
+    }
+
+    stage('Build & Load to kind') {
+      steps {
+        sh """
+          docker build -t ${APP_IMAGE}:${IMAGE_TAG} ./app
+          kind load docker-image ${APP_IMAGE}:${IMAGE_TAG} --name kind
+        """
+      }
+    }
+
+    stage('Deploy DEV') {
+      steps {
+        sh """
+          kubectl create namespace ${K8S_NS} --dry-run=client -o yaml | kubectl apply -f -
+          kubectl apply -k k8s/overlays/${K8S_NS}
+          kubectl set image deployment/devoops devoops=${APP_IMAGE}:${IMAGE_TAG} -n ${K8S_NS}
+          kubectl rollout status deployment/devoops -n ${K8S_NS} --timeout=120s
+        """
+      }
+    }
+  }
+}

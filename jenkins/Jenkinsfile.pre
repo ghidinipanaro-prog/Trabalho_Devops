@@ -1,0 +1,49 @@
+pipeline {
+  agent any
+
+  parameters {
+    string(name: 'SOURCE_TAG', defaultValue: 'hml-1', description: 'Tag validada em HML')
+  }
+
+  environment {
+    APP_IMAGE = "ghcr.io/ghidinipanaro-prog/devoops"
+    PRE_TAG   = "pre-${BUILD_NUMBER}"
+    K8S_NS    = "pre"
+  }
+
+  stages {
+    stage('Checkout') {
+      steps {
+        checkout scm
+      }
+    }
+
+    stage('Trivy Security Scan') {
+      steps {
+        sh """
+          trivy image --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed ${APP_IMAGE}:${params.SOURCE_TAG}
+        """
+      }
+    }
+
+    stage('Prepare PRE Image') {
+      steps {
+        sh """
+          docker tag ${APP_IMAGE}:${params.SOURCE_TAG} ${APP_IMAGE}:${PRE_TAG}
+          kind load docker-image ${APP_IMAGE}:${PRE_TAG} --name kind
+        """
+      }
+    }
+
+    stage('Deploy PRE') {
+      steps {
+        sh """
+          kubectl create namespace ${K8S_NS} --dry-run=client -o yaml | kubectl apply -f -
+          kubectl apply -k k8s/overlays/${K8S_NS}
+          kubectl set image deployment/devoops devoops=${APP_IMAGE}:${PRE_TAG} -n ${K8S_NS}
+          kubectl rollout status deployment/devoops -n ${K8S_NS} --timeout=120s
+        """
+      }
+    }
+  }
+}

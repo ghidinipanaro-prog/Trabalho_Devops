@@ -1,0 +1,41 @@
+pipeline {
+  agent any
+
+  parameters {
+    string(name: 'SOURCE_TAG', defaultValue: 'dev-1', description: 'Tag promovida do ambiente DEV')
+  }
+
+  environment {
+    APP_IMAGE = "ghcr.io/ghidinipanaro-prog/devoops"
+    HML_TAG   = "hml-${params.SOURCE_TAG}-${BUILD_NUMBER}"
+    K8S_NS    = "hml"
+  }
+
+  stages {
+    stage('Checkout') {
+      steps {
+        checkout scm
+      }
+    }
+
+    stage('Promote Image') {
+      steps {
+        sh """
+          docker tag ${APP_IMAGE}:${params.SOURCE_TAG} ${APP_IMAGE}:${HML_TAG}
+          kind load docker-image ${APP_IMAGE}:${HML_TAG} --name kind
+        """
+      }
+    }
+
+    stage('Deploy HML') {
+      steps {
+        sh """
+          kubectl create namespace ${K8S_NS} --dry-run=client -o yaml | kubectl apply -f -
+          kubectl apply -k k8s/overlays/${K8S_NS}
+          kubectl set image deployment/devoops devoops=${APP_IMAGE}:${HML_TAG} -n ${K8S_NS}
+          kubectl rollout status deployment/devoops -n ${K8S_NS} --timeout=120s
+        """
+      }
+    }
+  }
+}
