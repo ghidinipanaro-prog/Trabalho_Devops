@@ -32,8 +32,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Deploy no namespace dev
-        shell: bash
+        shell: powershell
         run: |
-          sed -i "s|newTag:.*|newTag: dev-${{ github.sha }}|" k8s/overlays/dev/kustomization.yaml
+          $f = "k8s/overlays/dev/kustomization.yaml"
+          (Get-Content $f) -replace 'newTag:.*', 'newTag: dev-${{ github.sha }}' | Set-Content $f
           kubectl apply -k k8s/overlays/dev
+          if ($LASTEXITCODE -ne 0) { exit 1 }
           kubectl rollout status deployment/devoops -n dev --timeout=120s
+          if ($LASTEXITCODE -ne 0) { exit 1 }
