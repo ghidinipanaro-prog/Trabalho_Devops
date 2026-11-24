@@ -1,0 +1,42 @@
+pipeline {
+  agent any
+
+  parameters {
+    string(name: 'RELEASE_TAG', defaultValue: 'pre-1', description: 'Tag aprovada em PRE para PROD')
+  }
+
+  environment {
+    APP_IMAGE = "ghcr.io/ghidinipanaro-prog/devoops"
+    PROD_TAG  = "prod-${params.RELEASE_TAG}-b${BUILD_NUMBER}"
+    K8S_NS    = "prod"
+  }
+
+  stages {
+    stage('Checkout') {
+      steps {
+        checkout scm
+      }
+    }
+
+    stage('Manual Approval') {
+      steps {
+        input message: "Aprovar deploy da imagem ${APP_IMAGE}:${params.RELEASE_TAG} em PRODUÇÃO (prod)?", ok: 'Aprovar Deploy'
+      }
+    }
+
+    stage('Release & Deploy PROD') {
+      steps {
+        withCredentials([file(credentialsId: 'kubeconfig-kind', variable: 'KUBECONFIG')]) {
+          sh """
+            docker tag ${APP_IMAGE}:${params.RELEASE_TAG} ${APP_IMAGE}:${PROD_TAG}
+            docker save ${APP_IMAGE}:${PROD_TAG} | docker exec -i devoops-control-plane ctr -n k8s.io images import -
+            kubectl create namespace ${K8S_NS} --dry-run=client -o yaml | kubectl apply -f -
+            kubectl apply -k k8s/overlays/${K8S_NS}
+            kubectl set image deployment/devoops devoops=${APP_IMAGE}:${PROD_TAG} -n ${K8S_NS}
+            kubectl rollout status deployment/devoops -n ${K8S_NS} --timeout=180s
+          """
+        }
+      }
+    }
+  }
+}
