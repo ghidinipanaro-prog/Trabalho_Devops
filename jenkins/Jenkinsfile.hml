@@ -22,7 +22,7 @@ pipeline {
       steps {
         sh """
           docker tag ${APP_IMAGE}:${params.SOURCE_TAG} ${APP_IMAGE}:${HML_TAG}
-          kind load docker-image ${APP_IMAGE}:${HML_TAG} --name kind
+          kind load docker-image ${APP_IMAGE}:${HML_TAG} --name devoops
         """
       }
     }

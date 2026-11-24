@@ -30,7 +30,7 @@ pipeline {
       steps {
         sh """
           docker tag ${APP_IMAGE}:${params.SOURCE_TAG} ${APP_IMAGE}:${PRE_TAG}
-          kind load docker-image ${APP_IMAGE}:${PRE_TAG} --name kind
+          kind load docker-image ${APP_IMAGE}:${PRE_TAG} --name devoops
         """
       }
     }

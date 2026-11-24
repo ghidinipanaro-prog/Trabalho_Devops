@@ -28,7 +28,7 @@ pipeline {
       steps {
         sh """
           docker tag ${APP_IMAGE}:${params.RELEASE_TAG} ${APP_IMAGE}:${PROD_TAG}
-          kind load docker-image ${APP_IMAGE}:${PROD_TAG} --name kind
+          kind load docker-image ${APP_IMAGE}:${PROD_TAG} --name devoops
           kubectl create namespace ${K8S_NS} --dry-run=client -o yaml | kubectl apply -f -
           kubectl apply -k k8s/overlays/${K8S_NS}
           kubectl set image deployment/devoops devoops=${APP_IMAGE}:${PROD_TAG} -n ${K8S_NS}
