@@ -2,13 +2,14 @@ pipeline {
   agent any
 
   parameters {
-    string(name: 'SOURCE_TAG', defaultValue: 'hml-1', description: 'Tag validada em HML')
+    string(name: 'SOURCE_TAG', defaultValue: 'hml-dev-6-1', description: 'Tag validada em HML')
   }
 
   environment {
     APP_IMAGE = "ghcr.io/ghidinipanaro-prog/devoops"
     PRE_TAG   = "pre-${BUILD_NUMBER}"
     K8S_NS    = "pre"
+    TRIVY_IMG = "aquasec/trivy:0.65.0"
   }
 
   stages {
@@ -21,7 +22,7 @@ pipeline {
     stage('Trivy Security Scan') {
       steps {
         sh """
-          trivy image --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed ${APP_IMAGE}:${params.SOURCE_TAG}
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock ${TRIVY_IMG} image --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed ${APP_IMAGE}:${params.SOURCE_TAG}
         """
       }
     }
@@ -30,19 +31,21 @@ pipeline {
       steps {
         sh """
           docker tag ${APP_IMAGE}:${params.SOURCE_TAG} ${APP_IMAGE}:${PRE_TAG}
-          kind load docker-image ${APP_IMAGE}:${PRE_TAG} --name devoops
+          docker save ${APP_IMAGE}:${PRE_TAG} | docker exec -i devoops-control-plane ctr -n k8s.io images import -
         """
       }
     }
 
     stage('Deploy PRE') {
       steps {
-        sh """
-          kubectl create namespace ${K8S_NS} --dry-run=client -o yaml | kubectl apply -f -
-          kubectl apply -k k8s/overlays/${K8S_NS}
-          kubectl set image deployment/devoops devoops=${APP_IMAGE}:${PRE_TAG} -n ${K8S_NS}
-          kubectl rollout status deployment/devoops -n ${K8S_NS} --timeout=120s
-        """
+        withCredentials([file(credentialsId: 'kubeconfig-kind', variable: 'KUBECONFIG')]) {
+          sh """
+            kubectl create namespace ${K8S_NS} --dry-run=client -o yaml | kubectl apply -f -
+            kubectl apply -k k8s/overlays/${K8S_NS}
+            kubectl set image deployment/devoops devoops=${APP_IMAGE}:${PRE_TAG} -n ${K8S_NS}
+            kubectl rollout status deployment/devoops -n ${K8S_NS} --timeout=120s
+          """
+        }
       }
     }
   }
