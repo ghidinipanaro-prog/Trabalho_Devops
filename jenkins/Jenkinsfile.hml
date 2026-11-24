@@ -2,7 +2,7 @@ pipeline {
   agent any
 
   parameters {
-    string(name: 'SOURCE_TAG', defaultValue: 'dev-1', description: 'Tag promovida do ambiente DEV')
+    string(name: 'SOURCE_TAG', defaultValue: 'dev-6', description: 'Tag promovida do ambiente DEV')
   }
 
   environment {
@@ -22,19 +22,21 @@ pipeline {
       steps {
         sh """
           docker tag ${APP_IMAGE}:${params.SOURCE_TAG} ${APP_IMAGE}:${HML_TAG}
-          kind load docker-image ${APP_IMAGE}:${HML_TAG} --name kind
+          docker save ${APP_IMAGE}:${HML_TAG} | docker exec -i devoops-control-plane ctr -n k8s.io images import -
         """
       }
     }
 
     stage('Deploy HML') {
       steps {
-        sh """
-          kubectl create namespace ${K8S_NS} --dry-run=client -o yaml | kubectl apply -f -
-          kubectl apply -k k8s/overlays/${K8S_NS}
-          kubectl set image deployment/devoops devoops=${APP_IMAGE}:${HML_TAG} -n ${K8S_NS}
-          kubectl rollout status deployment/devoops -n ${K8S_NS} --timeout=120s
-        """
+        withCredentials([file(credentialsId: 'kubeconfig-kind', variable: 'KUBECONFIG')]) {
+          sh """
+            kubectl create namespace ${K8S_NS} --dry-run=client -o yaml | kubectl apply -f -
+            kubectl apply -k k8s/overlays/${K8S_NS}
+            kubectl set image deployment/devoops devoops=${APP_IMAGE}:${HML_TAG} -n ${K8S_NS}
+            kubectl rollout status deployment/devoops -n ${K8S_NS} --timeout=120s
+          """
+        }
       }
     }
   }

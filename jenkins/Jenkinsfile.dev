@@ -16,7 +16,14 @@ pipeline {
 
     stage('Tests') {
       steps {
-        sh 'python3 -m pytest tests || true'
+        sh '''
+          cid=$(docker create python:3.12-slim sh -c "pip install --quiet -r /w/app/requirements.txt pytest && cd /w && pytest tests/")
+          docker cp ./. "$cid":/w
+          rc=0
+          docker start -a "$cid" || rc=$?
+          docker rm "$cid" > /dev/null
+          exit $rc
+        '''
       }
     }
 
@@ -24,19 +31,21 @@ pipeline {
       steps {
         sh """
           docker build -t ${APP_IMAGE}:${IMAGE_TAG} ./app
-          kind load docker-image ${APP_IMAGE}:${IMAGE_TAG} --name kind
+          docker save ${APP_IMAGE}:${IMAGE_TAG} | docker exec -i devoops-control-plane ctr -n k8s.io images import -
         """
       }
     }
 
     stage('Deploy DEV') {
       steps {
-        sh """
-          kubectl create namespace ${K8S_NS} --dry-run=client -o yaml | kubectl apply -f -
-          kubectl apply -k k8s/overlays/${K8S_NS}
-          kubectl set image deployment/devoops devoops=${APP_IMAGE}:${IMAGE_TAG} -n ${K8S_NS}
-          kubectl rollout status deployment/devoops -n ${K8S_NS} --timeout=120s
-        """
+        withCredentials([file(credentialsId: 'kubeconfig-kind', variable: 'KUBECONFIG')]) {
+          sh """
+            kubectl create namespace ${K8S_NS} --dry-run=client -o yaml | kubectl apply -f -
+            kubectl apply -k k8s/overlays/${K8S_NS}
+            kubectl set image deployment/devoops devoops=${APP_IMAGE}:${IMAGE_TAG} -n ${K8S_NS}
+            kubectl rollout status deployment/devoops -n ${K8S_NS} --timeout=120s
+          """
+        }
       }
     }
   }
