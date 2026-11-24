@@ -31,7 +31,7 @@ pipeline {
       steps {
         sh """
           docker build -t ${APP_IMAGE}:${IMAGE_TAG} ./app
-          kind load docker-image ${APP_IMAGE}:${IMAGE_TAG} --name devoops
+          docker save ${APP_IMAGE}:${IMAGE_TAG} | docker exec -i devoops-control-plane ctr -n k8s.io images import -
         """
       }
     }
